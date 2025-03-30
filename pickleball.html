@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pickleball Game</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: #87CEEB;
+        }
+
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 500px;
+            background: #90EE90;
+            border: 2px solid #000;
+        }
+
+        #net {
+            position: absolute;
+            left: 395px;
+            top: 200px; /* Hạ thấp lưới xuống thêm */
+            width: 10px;
+            height: 100px; /* Giảm chiều cao lưới */
+            background: #000;
+        }
+
+        .non-volley-zone {
+            position: absolute;
+            height: 150px;
+            width: 200px;
+            border: 2px dashed #fff;
+        }
+
+        #left-zone {
+            left: 100px;
+        }
+
+        #right-zone {
+            right: 100px;
+        }
+
+        .player {
+            position: absolute;
+            width: 20px;
+            height: 60px;
+        }
+
+        #player1 {
+            background: #ff4444; /* Màu đỏ cho người chơi */
+            border-radius: 5px;
+        }
+
+        #player2 {
+            background: #4444ff; /* Màu xanh cho AI */
+            border-radius: 50% 50% 0 0; /* Bo tròn phần trên */
+        }
+
+        .racket {
+            position: absolute;
+            width: 40px;
+            height: 5px;
+            transform-origin: center left;
+        }
+
+        #racket1 {
+            background: #ff8888; /* Màu vợt đỏ nhạt cho người chơi */
+        }
+
+        #racket2 {
+            background: #8888ff; /* Màu vợt xanh nhạt cho AI */
+        }
+
+        #ball {
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            background: #ff0;
+            border-radius: 50%;
+        }
+
+        #score {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            font-size: 24px;
+            font-family: Arial;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="score">0 - 0</div>
+        <div id="net"></div>
+        <div id="left-zone" class="non-volley-zone"></div>
+        <div id="right-zone" class="non-volley-zone"></div>
+        <div id="player1" class="player">
+            <div id="racket1" class="racket"></div>
+        </div>
+        <div id="player2" class="player">
+            <div id="racket2" class="racket"></div>
+        </div>
+        <div id="ball"></div>
+    </div>
+
+    <script>
+        const gameContainer = document.getElementById('game-container');
+        const player1 = document.getElementById('player1');
+        const player2 = document.getElementById('player2');
+        const racket1 = document.getElementById('racket1');
+        const racket2 = document.getElementById('racket2');
+        const ball = document.getElementById('ball');
+        const scoreElement = document.getElementById('score');
+
+        let score = [0, 0];
+        let ballX = 400;
+        let ballY = 250;
+        let ballSpeedX = 0;
+        let ballSpeedY = 0;
+        let gravity = 0.5;
+        let isServing = true;
+        let currentServer = 1;
+
+        // Thêm biến theo dõi vị trí người chơi
+        let player1Position = 100; // Vị trí ban đầu
+
+        // Vị trí ban đầu
+        player1.style.left = `${player1Position}px`;
+        player1.style.bottom = '50px';
+        player2.style.right = '100px';
+        player2.style.bottom = '50px';
+        
+        // Điều khiển người chơi và vợt - tách riêng các phím điều khiển
+        const keys = {
+            playerControls: {
+                a: false,      // Di chuyển sang trái cho người chơi
+                d: false,      // Di chuyển sang phải cho người chơi
+                w: false,      // Góc vợt lên cho người chơi
+                s: false       // Góc vợt xuống cho người chơi
+            },
+            aiControls: {
+                ArrowUp: false,
+                ArrowDown: false
+            }
+        };
+
+        // Cập nhật lại event listeners để tránh xung đột
+        document.addEventListener('keydown', (e) => {
+            if (['a', 'd', 'w', 's'].includes(e.key.toLowerCase())) {
+                e.preventDefault(); // Ngăn chặn hành vi mặc định
+                keys.playerControls[e.key.toLowerCase()] = true;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (['a', 'd', 'w', 's'].includes(e.key.toLowerCase())) {
+                e.preventDefault(); // Ngăn chặn hành vi mặc định
+                keys.playerControls[e.key.toLowerCase()] = false;
+            }
+            // Reset vị trí khi thả phím
+            player1.style.left = `${player1Position}px`;
+        });
+
+        function gameLoop() {
+            // Di chuyển người chơi - logic mới
+            if (keys.playerControls.a && player1Position > 50) {
+                player1Position -= 5;
+            }
+            if (keys.playerControls.d && player1Position < 350) {
+                player1Position += 5;
+            }
+
+            // Đảm bảo giới hạn cứng và cập nhật vị trí
+            player1Position = Math.max(50, Math.min(350, player1Position));
+            player1.style.left = `${player1Position}px`;
+
+            // Điều chỉnh góc vợt cho người chơi
+            if (keys.playerControls.w) {
+                racket1.style.transform = `rotate(${Math.max(-45, parseFloat(racket1.style.transform || '0') - 2)}deg)`;
+            }
+            if (keys.playerControls.s) {
+                racket1.style.transform = `rotate(${Math.min(45, parseFloat(racket1.style.transform || '0') + 2)}deg)`;
+            }
+
+            // Xử lý AI riêng biệt không ảnh hưởng đến người chơi
+            handleAIMovement();
+
+            // Cập nhật vị trí bóng
+            if (!isServing) {
+                ballSpeedY -= gravity;
+                ballX += ballSpeedX;
+                ballY += ballSpeedY;
+
+                // Va chạm với đất
+                if (ballY <= 0) {
+                    endPoint();
+                }
+
+                // Va chạm với lưới
+                if (ballX > 390 && ballX < 410 && ballY < 200) { // Điều chỉnh theo độ cao lưới mới
+                    endPoint();
+                }
+
+                // AI cho player2
+                const player2X = 800 - parseInt(player2.style.right) - 20;
+                
+                if (isServing && currentServer === 2) {
+                    // AI chuẩn bị giao bóng - giữ trong phần sân của AI
+                    const targetX = 650;
+                    moveAIToPosition(targetX);
+                    adjustAIRacketAngle(player2X, -20);
+                } else {
+                    // Dự đoán điểm rơi của bóng
+                    let predictedX = ballX;
+                    let predictedY = ballY;
+                    let tempSpeedX = ballSpeedX;
+                    let tempSpeedY = ballSpeedY;
+                    
+                    while (predictedY > 0 && predictedX > 400) {
+                        tempSpeedY -= gravity;
+                        predictedX += tempSpeedX;
+                        predictedY += tempSpeedY;
+                    }
+                    
+                    // Giới hạn di chuyển trong phần sân bên phải
+                    let targetX = Math.min(Math.max(450, predictedX - 30), 750);
+                    moveAIToPosition(targetX);
+                    adjustAIRacketAngle(player2X, predictedY);
+                }
+
+                // Va chạm với vợt
+                checkRacketCollision(player1, racket1);
+                checkRacketCollision(player2, racket2);
+
+                ball.style.left = ballX + 'px';
+                ball.style.bottom = ballY + 'px';
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function handleAIMovement() {
+            if (!isServing) {
+                const player2X = 800 - parseInt(player2.style.right) - 20;
+                // Logic AI ở đây
+                // Dự đoán điểm rơi của bóng cho AI
+                let predictedX = ballX;
+                let predictedY = ballY;
+                let tempSpeedX = ballSpeedX;
+                let tempSpeedY = ballSpeedY;
+                
+                while (predictedY > 0 && predictedX > 400) {
+                    tempSpeedY -= gravity;;
+                    predictedX += tempSpeedX;
+                    predictedY += tempSpeedY;
+                }
+                
+                // Di chuyển AI đến vị trí dự đoán
+                let targetX = Math.min(Math.max(450, predictedX - 30), 750);
+                moveAIToPosition(targetX);
+                adjustAIRacketAngle(player2X, predictedY);
+            }
+        }
+
+        function updateAIPosition() {
+            const currentRight = parseInt(player2.style.right);
+            const player2X = 800 - currentRight - 20;
+
+            // Giới hạn AI trong nửa sân phải (450-750)
+            if (player2X < 450) {
+                player2.style.right = (800 - 450 - 20) + 'px';
+            } else if (player2X > 750) {
+                player2.style.right = (800 - 750 - 20) + 'px';
+            }
+        }
+
+        function moveAIToPosition(targetX) {
+            const currentRight = parseInt(player2.style.right);
+            const player2X = 800 - currentRight - 20;
+            
+            if (targetX > player2X) {
+                player2.style.right = (currentRight - 5) + 'px';
+            } else if (targetX < player2X) {
+                player2.style.right = (currentRight + 5) + 'px';
+            }
+        }
+
+        function adjustAIRacketAngle(playerX, targetY) {
+            let baseAngle = -20; // Tăng góc mặc định để đánh mạnh hơn
+            
+            // Điều chỉnh góc dựa trên độ cao của bóng
+            if (ballY < 150) {
+                baseAngle = -15; // Đánh ngang khi bóng thấp
+            } else if (ballY > 300) {
+                baseAngle = -40; // Đánh xuống mạnh khi bóng cao
+            }
+            
+            // Điều chỉnh góc khi gần lưới
+            if (ballX > 600 && ballY > 200) {
+                baseAngle -= 15; // Đánh xuống mạnh hơn khi ở gần lưới và bóng cao
+            }
+
+            // Áp dụng góc mới
+            const currentAngle = parseFloat(racket2.style.transform?.replace('rotate(', '')?.replace('deg)', '') || '0');
+            
+            if (currentAngle < baseAngle - 2) {
+                keys.aiControls.ArrowDown = true;
+                keys.aiControls.ArrowUp = false;
+            } else if (currentAngle > baseAngle + 2) {
+                keys.aiControls.ArrowUp = true;
+                keys.aiControls.ArrowDown = false;
+            } else {
+                keys.aiControls.ArrowUp = false;
+                keys.aiControls.ArrowDown = false;
+            }
+        }
+
+        function checkRacketCollision(player, racket) {
+            const playerRect = player.getBoundingClientRect();
+            const racketRect = racket.getBoundingClientRect();
+            const ballRect = ball.getBoundingClientRect();
+
+            const hitBox = {
+                left: ballRect.left - 15,
+                right: ballRect.right + 15,
+                top: ballRect.top - 15,
+                bottom: ballRect.bottom + 15
+            };
+
+            if (hitBox.left < racketRect.right &&
+                hitBox.right > racketRect.left &&
+                hitBox.top < racketRect.bottom &&
+                hitBox.bottom > racketRect.top) {
+                
+                if (player === player2) {
+                    // Logic AI giữ nguyên
+                    const racketAngle = parseFloat(racket.style.transform?.replace('rotate(', '')?.replace('deg)', '') || '0');
+                    const speed = 8;
+                    
+                    if (player === player2) {
+                        // Điều chỉnh tốc độ và góc đánh cho AI
+                        const aiSpeed = speed * 1.2; // Tăng tốc độ lên
+                        const aiAngle = parseFloat(racket.style.transform?.replace('rotate(', '')?.replace('deg)', '') || '0');
+                        
+                        // Tính toán vector vận tốc dựa trên góc đánh
+                        const angleInRadians = (aiAngle + 90) * Math.PI / 180;
+                        ballSpeedX = -aiSpeed * Math.cos(angleInRadians);
+                        ballSpeedY = aiSpeed * Math.sin(angleInRadians) + 7; // Tăng độ nảy
+
+                        // Đảm bảo tốc độ ngang đủ mạnh
+                        if (Math.abs(ballSpeedX) < 4) {
+                            ballSpeedX = ballSpeedX < 0 ? -4 : 4;
+                        }
+                    } else {
+                        const racketAngle = parseFloat(racket.style.transform?.replace('rotate(', '')?.replace('deg)', '') || '0');
+                        const speed = 8; // Giảm tốc độ đánh bóng xuống từ 12
+                        
+                        if (player === player2) {
+                            // Điều chỉnh tốc độ và góc đánh cho AI
+                            const aiSpeed = speed * 0.9; // Giảm tốc độ xuống
+                            const aiAngle = parseFloat(racket.style.transform?.replace('rotate(', '')?.replace('deg)', '') || '0');
+                            
+                            ballSpeedX = -aiSpeed * Math.cos((aiAngle + 90) * Math.PI / 180);
+                            ballSpeedY = aiSpeed * Math.sin((aiAngle + 90) * Math.PI / 180) + 5;
+                        } else {
+                            // Logic va chạm cho người chơi 1
+                            ballSpeedX = speed * Math.cos((racketAngle + 90) * Math.PI / 180) * (ballX < 400 ? 1 : -1);
+                            ballSpeedY = speed * Math.sin((racketAngle + 90) * Math.PI / 180) + 8; // Giảm độ nảy từ 12
+                        }
+                    }
+                } else {
+                    // Logic mới cho người chơi với lực đánh mạnh hơn
+                    const speed = 8; // Tăng từ 10 lên 15
+                    
+                    const contactHeight = ballRect.top - playerRect.top;
+                    const relativeHeight = contactHeight / playerRect.height;
+                    
+                    let angle = (relativeHeight - 0.5) * 90;
+                    angle = Math.max(-45, Math.min(45, angle));
+                    
+                    const randomHeightBonus = Math.random() * 8; // Tăng độ cao ngẫu nhiên từ 5 lên 8
+                    ballSpeedX = speed * Math.cos((angle + 90) * Math.PI / 180);
+                    ballSpeedY = speed * Math.sin((angle + 90) * Math.PI / 180) + randomHeightBonus + 5; // Thêm lực nảy +5
+                    
+                    if (player === player1) {
+                        ballSpeedX = Math.abs(ballSpeedX) * 1.2; // Tăng thêm 20% tốc độ ngang
+                    }
+
+                    racket.style.transform = `rotate(${angle}deg)`;
+                }
+            }
+        }
+
+        function serve() {
+            isServing = false;
+            ballX = currentServer === 1 ? 150 : 650;
+            ballY = 250;
+            ballSpeedX = currentServer === 1 ? 6 : -6;  // Giảm tốc độ ngang
+            ballSpeedY = 15;  // Giảm độ cao ban đầu
+        }
+
+        function endPoint() {
+            if (ballX < 400) {
+                score[1]++;
+            } else {
+                score[0]++;
+            }
+            scoreElement.textContent = `${score[0]} - ${score[1]}`;
+            
+            if (score[0] >= 11 || score[1] >= 11) {
+                if (Math.abs(score[0] - score[1]) >= 2) {
+                    alert(`Player ${score[0] > score[1] ? 1 : 2} wins!`);
+                    score = [0, 0];
+                }
+            }
+
+            isServing = true;
+            currentServer = ballX < 400 ? 2 : 1;
+            ballX = 400;
+            ballY = 250;
+            ball.style.left = ballX + 'px';
+            ball.style.bottom = ballY + 'px';
+        }
+
+        // Bắt đầu game
+        gameLoop();
+        document.addEventListener('keypress', (e) => {
+            if (e.code === 'Space' && isServing) {
+                serve();
+            }
+        });
+
+        // Thêm một thông báo về điều khiển
+        const controlsDiv = document.createElement('div');
+        controlsDiv.style.position = 'absolute';
+        controlsDiv.style.top = '30px';
+        controlsDiv.style.width = '100%';
+        controlsDiv.style.textAlign = 'center';
+        controlsDiv.style.color = '#666';
+        controlsDiv.innerHTML = 'Người chơi (Đỏ): A/D để di chuyển, W/S để điều khiển vợt - AI (Xanh): Tự động';
+        gameContainer.appendChild(controlsDiv);
+    </script>
+</body>
+</html>
